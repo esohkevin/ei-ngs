@@ -37,15 +37,13 @@ function checkprojectparams() {
 	   -e 'workspace' \
          > ${projectdir}/.nextflow.config
 
-      echo -e "\nChecking main project required parameters in '${projectdir}/nextflow.config'\n"
-
       while read line; do
         param=( $(echo $line | grep '=' | sed "s|'||g") )
         paramname=${param[0]}
-        paramval=${param[2]}
+	paramval=$(echo ${param[2]}| tr [:lower:] [:upper:])
         if [[ ${paramval} == NULL ]] || [[ ${paramval} == "" ]]; then
-          echo -e "\n${ANSIRED}ERROR${ANSIRESET}: ${paramname} = '${paramval}' ... FAIL"
-          echo -e "Please set a value for ${paramname}.\n"
+          echo -e "\n${ANSIRED}ERROR${ANSIRESET}: ${paramname} = '${paramval}' ... FAIL!"
+          echo -e "Please set a value for ${paramname} in '${projectdir}/nextflow.config'.\n"
           exit 1
         fi
       done < ${projectdir}/.nextflow.config
