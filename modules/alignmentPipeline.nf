@@ -22,10 +22,10 @@ def getAlignmentDir() {
                   .map { alignDir -> tuple("${alignDir.baseName}", alignDir) }
 }
 
-def getInputCram() {
-    return channel.fromFilePairs( params.input_dir + "/*.cram", size: 1 )
-                  .ifEmpty { error "\nERROR: Could not locate BAM files!\nPlease make sure you have specified the correct file type and that they exist in the input directory you specified" }
-                  .map { bamName, bamFile -> tuple(bamName, bamFile.first()) }
+def getAlignment() {
+    return channel.fromFilePairs( [params.input_dir + '/*.{bam,bam.bai}', params.input_dir + '/*.{cram,cram.crai}'], size: 2 )
+                  .ifEmpty { error "\nERROR: Could not locate Alignment files!\nPlease make sure you have specified the correct file type and that they exist in the input directory you specified" }
+                  .map { bamName, bamFile -> tuple(bamName, bamFile.first(), bamFile.last()) }
 }
 
 def getInputFastqs() {

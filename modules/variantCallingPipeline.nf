@@ -549,7 +549,10 @@ process collectIntervalsPerChromosome() {
     tag "Collecting intervals per chromosome..."
     label 'bcftools'
     label 'variantCaller'
-    storeDir "${params.output_dir}/vcf/"
+    publishDir \
+        path: "${params.output_dir}/vcf/", \
+        mode: 'copy'
+    //storeDir "${params.output_dir}/vcf/"
     input:
         path(vcfs)
     output:
@@ -559,13 +562,13 @@ process collectIntervalsPerChromosome() {
         ls *.vcf.gz | awk '{print \$1,\$1}' > vcfs_list.txt
 
         while read line; do 
-            data=( \$line ); 
-            echo \$(basename \${data[0]} | sed 's/_/ /1' | awk '{print \$1}') \$(readlink \${data[1]})
-        done < vcfs_list.txt > vcf_chr_list.txt
+            data=( \$line );
+            echo \$(basename \${data[0]} | sed 's/_/ /g' | awk '{print \$1,\$2}') \$(readlink \${data[1]})
+        done < vcfs_list.txt | sort -g -k1 -k2 > vcf_chr_list.txt
 
 
         for chrom in \$(awk '{print \$1}' vcf_chr_list.txt | sort -V | uniq); do
-            grep -w \${chrom} vcf_chr_list.txt > \${chrom}_vcfs_list.txt
+            awk -v chr="\${chrom}" '\$1 == chr' vcf_chr_list.txt > \${chrom}_vcfs_list.txt
         done
         """
 }
@@ -574,9 +577,10 @@ process concatPerChromIntervalVcfs() {
     tag "Concatenating VCF files per chromosome..."
     label 'bcftools'
     label 'variantCaller'
-    storeDir "${params.output_dir}/vcf/"
-    //publishDir \
-    //    path: "${params.output_dir}/vcf/"
+    //storeDir "${params.output_dir}/vcf/"
+    publishDir \
+        path: "${params.output_dir}/vcf/", \
+        mode: 'copy'
     input:
         path(vcf_list)
     output:
@@ -584,9 +588,7 @@ process concatPerChromIntervalVcfs() {
     script:
         """
         chrom=\$(awk '{print \$1}' ${vcf_list} | uniq)
-        awk '{print \$2}' ${vcf_list} > \${chrom}_concat.list
-
-        #readlink *.gz > concat.list
+        awk '{print \$3}' ${vcf_list} > \${chrom}_concat.list
 
         bcftools \
             concat \

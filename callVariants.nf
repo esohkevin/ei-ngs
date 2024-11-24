@@ -92,12 +92,22 @@ workflow {
             // DEFAULT TO CALL VARIANTS FROM EXISTING GENOMICSDBs:
             // genomicsdb workspaces must already exist
             //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    
-            workspace = getGenomicsdbWorkspaces().map { wrkspc -> tuple(wrkspc.simpleName, wrkspc) }
+
+            if(!params.interval == 'NULL') {
+                genomicInterval = getGenomicInterval(gvcfList)
+                workspace = getGenomicsdbWorkspaces().map { wrkspc -> tuple(wrkspc.simpleName, wrkspc) }
+                genomicInterval
+                    .map { interval -> tuple(interval.simpleName + "_${params.output_prefix}-workspace", interval) }
+                    .join(workspace)
+                    .map {workspaceName, interval, workspace -> tuple(workspaceName, workspace)}
+                    .set { workspace }
+            } else {
+                workspace = getGenomicsdbWorkspaces().map { wrkspc -> tuple(wrkspc.simpleName, wrkspc) }
+            }
             vcfs = callVariantsFromExistingGenomicsDB(workspace).view().collect()
             vcfs_per_chrom_list = collectIntervalsPerChromosome(vcfs).flatten()
             vcfs_per_chrom = concatPerChromIntervalVcfs(vcfs_per_chrom_list).collect().view()
-            concatPerChromosomeVcfs(vcfs_per_chrom).view()
+            //concatPerChromosomeVcfs(vcfs_per_chrom).view()
 
         }
     }
