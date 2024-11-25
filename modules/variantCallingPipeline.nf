@@ -401,7 +401,7 @@ process createGenomicsDbPerInterval() {
         #done > gvcf.list
 
         gatk \
-            --java-options "-XX:ConcGCThreads=${task.cpus} -Xms${task.memory.toGiga()}g -Xmx${task.memory.toGiga()}g -XX:ParallelGCThreads=${task.cpus}" \
+            --java-options "-Xms${task.memory.toGiga()}g -Xmx${task.memory.toGiga()}g -XX:ConcGCThreads=${task.cpus} -XX:ParallelGCThreads=${task.cpus}" \
             GenomicsDBImport \
             -R ${params.fastaRef} \
             --tmp-dir . \
@@ -411,6 +411,8 @@ process createGenomicsDbPerInterval() {
             --genomicsdb-workspace-path ${interval.simpleName}_${params.output_prefix}-workspace
         """
 }
+
+//-XX:ConcGCThreads=${task.cpus} -XX:ParallelGCThreads=${task.cpus}
 
 process updateGenomicsDbPerInterval() {
     tag "processing ${interval.simpleName}..."
