@@ -116,10 +116,10 @@ process getVcfGenomicIntervals() {
         path "*"
     script:
         """
-        #gvcf=\$(ls *.g.vcf.gz | head -1)
-        gvcf=\$(awk '{print \$2}' | head -1)
+        gvcfile=\$(readlink ${gvcfList})
+        gvcf=\$(awk '{print \$2}' \${gvcfile} | head -1)
 
-        zgrep '##contig' \$(readlink \${gvcf}) | \
+        zgrep '##contig' \${gvcf} | \
             sed 's/[=,>]/\t/g' | \
             cut -f3,5 | \
             grep -v '^HLA' | \
@@ -399,12 +399,13 @@ process createGenomicsDbPerInterval() {
         #        echo "-V \${file}";
         #    fi
         #done > gvcf.list
-
+        mkdir -p temp
         gatk \
             --java-options "-Xms${task.memory.toGiga()}g -Xmx${task.memory.toGiga()}g -XX:ConcGCThreads=${task.cpus} -XX:ParallelGCThreads=${task.cpus}" \
             GenomicsDBImport \
             -R ${params.fastaRef} \
-            --tmp-dir . \
+            --tmp-dir temp \
+            --batch-size ${params.batch_size} \
             --consolidate true \
             --arguments_file ${gvcfList} \
             -L ${interval} \
@@ -430,11 +431,12 @@ process updateGenomicsDbPerInterval() {
             path("${interval.simpleName}_${params.output_prefix}-workspace")
     script:
         """
+        mkdir -p temp
         gatk \
             --java-options "-XX:ConcGCThreads=${task.cpus} -Xms${task.memory.toGiga()}g -Xmx${task.memory.toGiga()}g -XX:ParallelGCThreads=${task.cpus}" \
             GenomicsDBImport \
             -R ${params.fastaRef} \
-            --tmp-dir . \
+            --tmp-dir temp \
             --consolidate true \
             --arguments_file ${gvcfList} \
             --batch-size ${params.batch_size} \
@@ -549,7 +551,10 @@ process collectIntervalsPerChromosome() {
     tag "Collecting intervals per chromosome..."
     label 'bcftools'
     label 'variantCaller'
-    storeDir "${params.output_dir}/vcf/"
+    publishDir \
+        path: "${params.output_dir}/vcf/", \
+        mode: 'copy'
+    //storeDir "${params.output_dir}/vcf/"
     input:
         path(vcfs)
     output:
@@ -559,13 +564,13 @@ process collectIntervalsPerChromosome() {
         ls *.vcf.gz | awk '{print \$1,\$1}' > vcfs_list.txt
 
         while read line; do 
-            data=( \$line ); 
-            echo \$(basename \${data[0]} | sed 's/_/ /1' | awk '{print \$1}') \$(readlink \${data[1]})
-        done < vcfs_list.txt > vcf_chr_list.txt
+            data=( \$line );
+            echo \$(basename \${data[0]} | sed 's/_/ /g' | awk '{print \$1,\$2}') \$(readlink \${data[1]})
+        done < vcfs_list.txt | sort -g -k1 -k2 > vcf_chr_list.txt
 
 
         for chrom in \$(awk '{print \$1}' vcf_chr_list.txt | sort -V | uniq); do
-            grep -w \${chrom} vcf_chr_list.txt > \${chrom}_vcfs_list.txt
+            awk -v chr="\${chrom}" '\$1 == chr' vcf_chr_list.txt > \${chrom}_vcfs_list.txt
         done
         """
 }
@@ -574,9 +579,10 @@ process concatPerChromIntervalVcfs() {
     tag "Concatenating VCF files per chromosome..."
     label 'bcftools'
     label 'variantCaller'
-    storeDir "${params.output_dir}/vcf/"
-    //publishDir \
-    //    path: "${params.output_dir}/vcf/"
+    //storeDir "${params.output_dir}/vcf/"
+    publishDir \
+        path: "${params.output_dir}/vcf/", \
+        mode: 'copy'
     input:
         path(vcf_list)
     output:
@@ -584,9 +590,7 @@ process concatPerChromIntervalVcfs() {
     script:
         """
         chrom=\$(awk '{print \$1}' ${vcf_list} | uniq)
-        awk '{print \$2}' ${vcf_list} > \${chrom}_concat.list
-
-        #readlink *.gz > concat.list
+        awk '{print \$3}' ${vcf_list} > \${chrom}_concat.list
 
         bcftools \
             concat \
