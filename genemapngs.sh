@@ -111,6 +111,7 @@ function usage() {
            svarcall: Perform only sinlge sample variant calling to generate gVCF files.
            jvarcall: Perform only joint (multi-sample) variant calling with pre-existing gVCF files.
           varfilter: Filter variant calls in VCF/BCF files.
+	    annovar: Annotate variants with ANNOVAR
 
 
            profiles: <executor>,<container>,<reference>
@@ -399,7 +400,23 @@ function varfilterusage() {
    """
 }
 
+function annovarusage() {
+   echo -e "\nUsage: genemapngs annovar <profile> [options] ..."
+   echo """
+           options:
+           --------
 
+           --wgs                : Specify this flag if your data is whole-genome sequence (it runs whole exome - wes - by default)
+                                  This is important for resource allocation.
+           --left_norm          : (optional) Whether to left-normalize variants before annotation; true, false [defaul: false].
+           --vcf_dir            : (required) Path containing VCF file(s).
+           --out                : Output prefix (optional) [default: my-varfilter].
+           --output_dir         : (optional) [results will be saved to parent of input directory]
+           --threads            : number of computer cpus to use  [default: 4].
+           --njobs              : (optional) number of jobs to submit at once [default: 10]
+           --help               : print this help message.
+   """
+}
 ############################################# CONFIGURATION FILES ####################################################
 function testconfig() {
 #check and remove test config file if it exists
@@ -784,7 +801,43 @@ $(setglobalparams ${12})
 echo -e "configuration file '${projectname}-varfilter.config' created!\n"
 }
 
+function annovarconfig() {
 
+#check and remove config file if it exists
+[ -e ${projectname}-annovar.config ] && rm ${projectname}-annovar.config
+
+echo """
+params {
+  //============================================================
+  //genemapngs variant annotation (annovar) workflow parameters
+  //============================================================
+
+  exome = $1
+  left_norm = $2
+  vcf_dir = '${3}'
+  output_prefix = '${4}'
+  output_dir = '${5}'
+  threads = ${6}
+  njobs = ${7}
+
+
+  /*********************************************************************************
+  ~ exome: (optional) for VQSR, MQ annotation will be excluded for exome data
+  ~ left_norm: (optional) Whether to left-normalize variants before annotation with 
+    ANNOVAR; true, false [defaul: false].
+  ~ vcf_dir: (required) path to VCF file(s).
+  ~ output_prefix: (optional) output prefix [default: my-varfilter]. 
+  ~ output_dir: (optional) defaults to parent of vcf directory ['vcf_dir/../']
+  ~ threads: (optional) number of computer cpus to use  [default: 11]
+  ~ njobs: (optional) number of jobs to submit at once [default: 10]
+  **********************************************************************************/
+}
+
+$(setglobalparams ${8})
+""" >> ${projectname}-annovar.config
+
+echo -e "configuration file '${projectname}-annovar.config' created!\n"
+}
 
 if [ $# -lt 1 ]; then
    usage; exit 1;
@@ -1423,6 +1476,66 @@ else
          #echo `nextflow -c ${out}-qc.config run qualitycontrol.nf -profile $profile`
 
       ;;
+      annovar)
+         #pass profile as argument
+         checkprofile $2;
+         profile=$2;
+         shift;
+         if [ $# -lt 2 ]; then
+            annovarusage;
+            exit 1;
+         fi
+
+         prog=`getopt -a --long "help,wgs,left_norm,vcf_dir:,out:,output_dir:,threads:,njobs:" -n "${0##*/}" -- "$@"`;
+
+         #- defaults
+         exome=true
+         resource=resource-selector-wes.config
+         left_norm=false
+         vcf_dir=NULL
+         out="my-varfilter"
+         output_dir=NULL
+         threads=4
+         njobs=10
+
+         eval set -- "$prog"
+
+         while true; do
+            case $1 in
+               --wgs) exome=false; resource=resource-selector-wgs.config; shift;;
+               --left_norm) exome=true; shift;;
+               --vcf_dir) vcf_dir="$2"; shift 2;;
+               --out) out="$2"; shift 2;;
+               --output_dir) output_dir="$2"; shift 2;;
+               --threads) threads="$2"; shift 2;;
+               --njobs) njobs="$2"; shift 2;;
+               --help) shift; annovarusage; exit 1;;
+               --) shift; break;;
+               *) shift; annovarusage; exit 1;;
+            esac
+            continue; shift;
+         done
+
+         check_required_params \
+             output_dir,$output_dir \
+             vcf_dir,$vcf_dir && \
+         check_optional_params \
+             out,$out \
+             threads,$threads \
+             njobs,$njobs && \
+         annovarconfig \
+             $exome \
+             $left_norm \
+             $vcf_dir \
+             $out \
+             $output_dir \
+             $threads \
+             $njobs \
+             $resource
+
+         #echo `nextflow -c ${out}-qc.config run qualitycontrol.nf -profile $profile`
+
+      ;;      
       help) shift; usage; exit 1;;
       *) shift; usage; exit 1;;
    esac
