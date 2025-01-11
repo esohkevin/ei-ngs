@@ -123,7 +123,7 @@ process getVcfGenomicIntervals() {
             sed 's/[=,>]/\t/g' | \
             cut -f3,5 | \
             grep -v '^HLA' | \
-        awk '{ if(\$2<=5000000){print \$1,"0",\$2} else{ for(i=0; i<=\$2; i+=5000000) { if(i+4999999<\$2) {print \$1,i,i+4999999} else{print \$1,i,\$2} } } }' \
+        awk intvl=${intval} '{ if(\$2<=5000000){print \$1,"0",\$2} else{ for(i=0; i<=\$2; i+=5000000) { if(i+4999999<\$2) {print \$1,i,i+4999999} else{print \$1,i,\$2} } } }' \
         > .interval_list
 
         while read interval; do
