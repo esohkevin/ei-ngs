@@ -474,7 +474,7 @@ process getPedFile() {
 process genotypeGvcfs() {
     tag "Writing genotypes to ${params.output_prefix}.vcf.gz"
     label 'gatk'
-    label 'variantCaller'
+    label 'gatkVariantCaller'
     publishDir \
         path: "${params.output_dir}/vcf/"
     input:
@@ -500,7 +500,7 @@ process genotypeGvcfs() {
 process callVariantsFromGenomicsDB() {
     tag "Writing genotypes to ${interval.simpleName}_${params.output_prefix}.vcf.gz"
     label 'gatk'
-    label 'variantCaller'
+    label 'gatkVariantCaller'
     //publishDir \
     //    path: "${params.output_dir}/vcf/"
     input:
@@ -526,7 +526,7 @@ process callVariantsFromGenomicsDB() {
 process callVariantsFromExistingGenomicsDB() {
     tag "Writing genotypes to ${workspaceName}.vcf.gz"
     label 'gatk'
-    label 'variantCaller'
+    label 'gatkVariantCaller'
     //publishDir \
     //    path: "${params.output_dir}/vcf/"
     input:
