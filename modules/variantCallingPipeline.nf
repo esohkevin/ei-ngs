@@ -116,10 +116,10 @@ process getVcfGenomicIntervals() {
         path "*"
     script:
         """
-        #gvcf=\$(ls *.g.vcf.gz | head -1)
-        gvcf=\$(awk '{print \$2}' | head -1)
+        gvcfile=\$(readlink ${gvcfList})
+        gvcf=\$(awk '{print \$2}' \${gvcfile} | head -1)
 
-        zgrep '##contig' \$(readlink \${gvcf}) | \
+        zgrep '##contig' \${gvcf} | \
             sed 's/[=,>]/\t/g' | \
             cut -f3,5 | \
             grep -v '^HLA' | \
@@ -399,18 +399,21 @@ process createGenomicsDbPerInterval() {
         #        echo "-V \${file}";
         #    fi
         #done > gvcf.list
-
+        mkdir -p temp
         gatk \
-            --java-options "-XX:ConcGCThreads=${task.cpus} -Xms${task.memory.toGiga()}g -Xmx${task.memory.toGiga()}g -XX:ParallelGCThreads=${task.cpus}" \
+            --java-options "-Xms${task.memory.toGiga()}g -Xmx${task.memory.toGiga()}g -XX:ConcGCThreads=${task.cpus} -XX:ParallelGCThreads=${task.cpus}" \
             GenomicsDBImport \
             -R ${params.fastaRef} \
-            --tmp-dir . \
+            --tmp-dir temp \
+            --batch-size ${params.batch_size} \
             --consolidate true \
             --arguments_file ${gvcfList} \
             -L ${interval} \
             --genomicsdb-workspace-path ${interval.simpleName}_${params.output_prefix}-workspace
         """
 }
+
+//-XX:ConcGCThreads=${task.cpus} -XX:ParallelGCThreads=${task.cpus}
 
 process updateGenomicsDbPerInterval() {
     tag "processing ${interval.simpleName}..."
@@ -428,11 +431,12 @@ process updateGenomicsDbPerInterval() {
             path("${interval.simpleName}_${params.output_prefix}-workspace")
     script:
         """
+        mkdir -p temp
         gatk \
             --java-options "-XX:ConcGCThreads=${task.cpus} -Xms${task.memory.toGiga()}g -Xmx${task.memory.toGiga()}g -XX:ParallelGCThreads=${task.cpus}" \
             GenomicsDBImport \
             -R ${params.fastaRef} \
-            --tmp-dir . \
+            --tmp-dir temp \
             --consolidate true \
             --arguments_file ${gvcfList} \
             --batch-size ${params.batch_size} \
