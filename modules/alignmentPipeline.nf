@@ -786,6 +786,7 @@ process mergeMultiLaneAlignment() {
             -c \
             -p \
             -O CRAM \
+            -h \$(head -1 alignment-list.txt) \
             --reference ${params.fastaRef} \
             -@ ${task.cpus} \
             --write-index \
