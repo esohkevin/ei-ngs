@@ -123,7 +123,7 @@ process getVcfGenomicIntervals() {
             sed 's/[=,>]/\t/g' | \
             cut -f3,5 | \
             grep -v '^HLA' | \
-        awk intvl=${intval} '{ if(\$2<=5000000){print \$1,"0",\$2} else{ for(i=0; i<=\$2; i+=5000000) { if(i+4999999<\$2) {print \$1,i,i+4999999} else{print \$1,i,\$2} } } }' \
+        awk '{ if(\$2<=5000000){print \$1,"0",\$2} else{ for(i=0; i<=\$2; i+=5000000) { if(i+4999999<\$2) {print \$1,i,i+4999999} else{print \$1,i,\$2} } } }' \
         > .interval_list
 
         while read interval; do
@@ -148,7 +148,6 @@ process getGenomicIntervalList() {
                 echo \${interval} > \$(echo \${interval} | sed 's/[:*]/_/g' | sed 's/ /_/g').bed
             fi
         done < ${params.interval}
-
         """
 }
 
@@ -591,6 +590,15 @@ process concatPerChromIntervalVcfs() {
         """
         chrom=\$(awk '{print \$1}' ${vcf_list} | uniq)
         awk '{print \$3}' ${vcf_list} > \${chrom}_concat.list
+
+        for vcf in \$(cat \${chrom}_concat.list); do
+            [[ ! -e "\${vcf}.tbi"  ]] && \
+            bcftools \
+                index \
+                -ft \
+                --threads ${task.cpus} \
+                \${vcf}
+        done
 
         bcftools \
             concat \

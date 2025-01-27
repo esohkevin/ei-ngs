@@ -409,9 +409,18 @@ function annovarusage() {
            --wgs                : Specify this flag if your data is whole-genome sequence (it runs whole exome - wes - by default)
                                   This is important for resource allocation.
            --left_norm          : (optional) Whether to left-normalize variants before annotation; true, false [defaul: false].
-           --vcf_dir            : (required) Path containing VCF file(s).
+           --vcf_dir            : (required) Path containing VCF file(s). Each VCF file must contain only one chromosome.
            --out                : Output prefix (optional) [default: my-varfilter].
            --output_dir         : (optional) [results will be saved to parent of input directory]
+	   --minimal            : (optional) add this flag to perform only minimal annotation. Only four databases
+                                  are used; refGene, knownGene, cytoBand, avsnp151
+           --interval           : (optional) list containing genomic intervals.
+                                  E.g. one chromosome name per line and/or coordinate in bed format: <chr> <start> <stop>.
+                                  NB: Ensure that your chromosome names are the same as in the reference (e.g. chr1 or 1).
+                                  If not provided, full VCF file provided will be processed in one run. This will take
+                                  longer for large files. It is recommended to provide interval list.
+           --alt_contig         : (optional) add this flag to include alternate contigs in the annotation
+                                  Alternate contigs are removed by default. Only chomosomes 1-22,M,X,Y are processed
            --threads            : number of computer cpus to use  [default: 4].
            --njobs              : (optional) number of jobs to submit at once [default: 10]
            --help               : print this help message.
@@ -817,23 +826,35 @@ params {
   vcf_dir = '${3}'
   output_prefix = '${4}'
   output_dir = '${5}'
-  threads = ${6}
-  njobs = ${7}
+  minimal = ${6}
+  interval = ${7}
+  alt_contig = ${8}
+  threads = ${9}
+  njobs = ${10}
 
 
   /*********************************************************************************
   ~ exome: (optional) for VQSR, MQ annotation will be excluded for exome data
   ~ left_norm: (optional) Whether to left-normalize variants before annotation with 
     ANNOVAR; true, false [defaul: false].
-  ~ vcf_dir: (required) path to VCF file(s).
+  ~ vcf_dir: (required) path to VCF file(s). Each VCF file must contain only one chromosome
   ~ output_prefix: (optional) output prefix [default: my-varfilter]. 
   ~ output_dir: (optional) defaults to parent of vcf directory ['vcf_dir/../']
+  ~ minimal: (optional) whether to perform minimal annotation. Only four databases
+    are used; refGene, knownGene, cytoBand, avsnp151
+  ~ interval: (optional) list containing genomic intervals.
+    E.g. one chromosome name per line and/or coordinate in bed format: <chr> <start> <stop>.
+    NB: Ensure that your chromosome names are the same as in the reference (e.g. chr1 or 1).
+    If not provided, full VCF file provided will be processed in one run. This will take
+    longer for large files. It is recommended to provide interval list.
+  ~ alt_contig: add this flag to include alternate contigs in the annotation
+    Alternate contigs are removed by default. Only chomosomes 1-22,M,X,Y are processed
   ~ threads: (optional) number of computer cpus to use  [default: 11]
   ~ njobs: (optional) number of jobs to submit at once [default: 10]
   **********************************************************************************/
 }
 
-$(setglobalparams ${8})
+$(setglobalparams ${11})
 """ >> ${projectname}-annovar.config
 
 echo -e "configuration file '${projectname}-annovar.config' created!\n"
@@ -1486,7 +1507,7 @@ else
             exit 1;
          fi
 
-         prog=`getopt -a --long "help,wgs,left_norm,vcf_dir:,out:,output_dir:,threads:,njobs:" -n "${0##*/}" -- "$@"`;
+         prog=`getopt -a --long "help,wgs,left_norm,minimal,alt_contig,interval:,vcf_dir:,out:,output_dir:,threads:,njobs:" -n "${0##*/}" -- "$@"`;
 
          #- defaults
          exome=true
@@ -1495,6 +1516,9 @@ else
          vcf_dir=NULL
          out="my-varfilter"
          output_dir=NULL
+	 minimal=false
+	 interval=NULL
+	 alt_contig=false
          threads=4
          njobs=10
 
@@ -1503,10 +1527,13 @@ else
          while true; do
             case $1 in
                --wgs) exome=false; resource=resource-selector-wgs.config; shift;;
-               --left_norm) exome=true; shift;;
+               --left_norm) left_norm=true; shift;;
+               --minimal) minimal=true; shift;;
+	       --alt_contig) alt_contig=true; shift;;
                --vcf_dir) vcf_dir="$2"; shift 2;;
                --out) out="$2"; shift 2;;
                --output_dir) output_dir="$2"; shift 2;;
+               --interval) interval="$2"; shift 2;;
                --threads) threads="$2"; shift 2;;
                --njobs) njobs="$2"; shift 2;;
                --help) shift; annovarusage; exit 1;;
@@ -1521,6 +1548,7 @@ else
              vcf_dir,$vcf_dir && \
          check_optional_params \
              out,$out \
+             interval,$interval \
              threads,$threads \
              njobs,$njobs && \
          annovarconfig \
@@ -1529,6 +1557,9 @@ else
              $vcf_dir \
              $out \
              $output_dir \
+	     $minimal \
+             $interval \
+	     $alt_contig \
              $threads \
              $njobs \
              $resource
