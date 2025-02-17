@@ -11,15 +11,22 @@ include {
     sortAlignmentByName;
     sortCram;
     indexAlignment;
+    indexAndMoveAlignment;
     fixAlignmentTags;
     fixAlignmentMate;
     mergeMultiLaneAlignment;
+    updateMergedAlignmentHeader;
 } from "${projectDir}/modules/alignmentPipeline.nf"
 
 workflow {
     println "\nMERGE ALIGNMENT FILES\n"
-    alignment = getAlignmentDir().view()
-    mergeMultiLaneAlignment(alignment).view()
+    getAlignmentDir()
+        .set { alignment }
+    mergeMultiLaneAlignment(alignment)
+        .set { merged_alignment }
+    updateMergedAlignmentHeader(merged_alignment)
+        .set { merged_alignment_updated }
+//    indexAndMoveAlignment(merged_alignment_updated)
 }
 
 workflow.onComplete { 

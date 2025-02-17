@@ -646,10 +646,9 @@ process concatPerChromosomeVcfs() {
 }
 
 process deepVariantCaller() {
-    tag "Writing genotypes to ${params.output_prefix}.vcf.gz"
+    tag "Writing genotypes to ${bamName}.g.vcf.gz"
     label 'deepvariant'
     label 'deepv_caller'
-    beforeScript = 'module load python/anaconda-python-3.7'
     publishDir \
         path: "${params.output_dir}/gvcfs/"
     input:
@@ -660,13 +659,26 @@ process deepVariantCaller() {
     output:
         path "${bamName}.g.vcf.{gz,gz.tbi}"
     script:
+    if(params.exome == true)
         """
         run_deepvariant \
-            --model_type=\$([ ${params.exome} == true ] && echo WES || echo WGS) \
+            --model_type=WES \
             --ref=${params.fastaRef} \
             --reads=${bamFile} \
             --output_gvcf=${bamName}.g.vcf.gz \
             --output_vcf=${bamName}.vcf.gz \
+            --num_shards=${task.cpus}
+        """
+    else
+        """
+        mkdir -p ./tmp
+        run_deepvariant \
+            --model_type=WGS \
+            --ref=${params.fastaRef} \
+            --reads=${bamFile} \
+            --output_gvcf=${bamName}.g.vcf.gz \
+            --output_vcf=${bamName}.vcf.gz \
+            --intermediate_results_dir ./tmp \
             --num_shards=${task.cpus}
         """
 }
