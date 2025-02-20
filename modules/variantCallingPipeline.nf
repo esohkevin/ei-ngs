@@ -560,7 +560,7 @@ process collectIntervalsPerChromosome() {
         path("*_vcfs_list.txt")
     script:
         """
-        ls *.vcf.gz | awk '{print \$1,\$1}' > vcfs_list.txt
+        ls *.{vcf.gz,bcf} | awk '{print \$1,\$1}' > vcfs_list.txt
 
         while read line; do 
             data=( \$line );
@@ -592,10 +592,9 @@ process concatPerChromIntervalVcfs() {
         awk '{print \$3}' ${vcf_list} > \${chrom}_concat.list
 
         for vcf in \$(cat \${chrom}_concat.list); do
-            [[ ! -e "\${vcf}.tbi"  ]] && \
+            [[ ! -e "\${vcf}.csi"  ]] && \
             bcftools \
                 index \
-                -ft \
                 --threads ${task.cpus} \
                 \${vcf}
         done
@@ -678,7 +677,6 @@ process deepVariantCaller() {
             --reads=${bamFile} \
             --output_gvcf=${bamName}.g.vcf.gz \
             --output_vcf=${bamName}.vcf.gz \
-            --intermediate_results_dir ./tmp \
             --num_shards=${task.cpus}
         """
 }
@@ -695,19 +693,48 @@ process glnexusJointCaller() {
         path "${params.output_prefix}_glnexus.bcf"
     script:
         """
-        for file in ${gvcfList}; do
-            if [ \${file##*.} != "tbi" ]; then
-                echo "\${file}";
-            fi
-        done | sort -V > gvcf.list
+        # for file in ${gvcfList}; do
+        #     if [ \${file##*.} != "tbi" ]; then
+        #         echo "\${file}";
+        #     fi
+        # done | sort -V > gvcf.list
+
+        awk '{print \$2}' ${gvcfList} > gvcflist.txt
 
         if [ -d "GLnexus.DB" ]; then rm -rf GLnexus.DB; fi
 
         glnexus_cli \
-            --config DeepVariant \
-            --list gvcf.list \
+            --config ${params.glnexus_config} \
+            --list gvcflist.txt \
             --threads ${task.cpus} \
             > "${params.output_prefix}_glnexus.bcf"
+        """
+}
+
+process glnexusJointCallPerInterval() {
+    tag "Writing genotypes to ${interval.baseName}_glnexus.bcf"
+    label 'glnexus'
+    label 'nexus_caller'
+    //publishDir \
+    //    path: "${params.output_dir}/vcf/bcf/"
+    input:
+        tuple \
+            path(gvcfList), \
+            path(interval)
+    output:
+        path "${interval.baseName}_glnexus.bcf"
+    script:
+        """
+        awk '{print \$2}' ${gvcfList} > gvcflist.txt
+
+        if [ -d "GLnexus.DB" ]; then rm -rf GLnexus.DB; fi
+
+        glnexus_cli \
+            --config ${params.glnexus_config} \
+            --list gvcflist.txt \
+            --bed ${interval} \
+            --threads ${task.cpus} \
+            > "${interval.baseName}_glnexus.bcf"
         """
 }
 
