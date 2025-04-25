@@ -55,6 +55,9 @@ workflow {
         if(params.joint_caller == 'glnexus') {
             gvcfs = getGvcfFiles().toList()
             gvcfList = getGvcfList(gvcfs)
+
+            //glnexusJointCaller(gvcfList).set { bcf }
+
             genomicInterval = getGenomicInterval(gvcfList)
             gvcfList
                 .combine(genomicInterval)

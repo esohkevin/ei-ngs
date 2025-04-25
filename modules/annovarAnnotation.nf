@@ -116,7 +116,7 @@ process annovarGRCh37() {
     label 'annovarMem'
     if(params.interval == 'NULL') {
         publishDir \
-            path: "${params.output_dir}/"
+            path: "${params.output_dir}/annovar/",
             mode: 'copy'
     } else {
         publishDir \
