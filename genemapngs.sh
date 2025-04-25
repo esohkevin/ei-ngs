@@ -343,7 +343,10 @@ function svarcallusage() {
            --alignment_dir      : (required) Path to alignment (BAM/CRAM) files and their indexes (.bai/.crai).
            --out                : Output prefix (optional) [default: my-ngs].
            --output_dir         : (optional) [results will be saved to parent of input directory]
-           --scaller            : Single sample variant caller; gatk, deepvariant, dysgu, manta [default: gatk]
+           --scaller            : Single sample variant caller; gatk-hap, gatk-som, gatk-mt, deepvariant, dysgu, manta [default: gatk-hap]
+                                  gatk-hap: GATK haplotypeCaller
+				  gatk-som: GATK Mutect2 (Somatic caller)
+	                           gatk-mt: GATK Mitochondria caller
            --threads            : number of computer cpus to use  [default: 11].
            --njobs              : (optional) number of jobs to submit at once [default: 10]
            --help               : print this help message.
@@ -691,7 +694,11 @@ params {
   ~ alignment_dir: (required) path to alignment (BAM/CRAM) files and their indexes (.bai/.crai).
   ~ output_dir: (optional) defaults to parent of input directory ['input_dir/../']
   ~ output_prefix: (optional) project name.
-  ~ single_caller: (optional) gatk, deepvariant, dysgu, manta [default: gatk]
+  ~ single_caller: (optional) gatk-hap, gatk-som, gatk-mt, deepvariant, dysgu, manta 
+    [default: gatk-hap]
+    gatk-hap: GATK haplotypeCaller
+    gatk-som: GATK Mutect2 (Somatic caller)
+     gatk-mt: GATK Mitochondria caller
   ~ threads: (optional) number of computer cpus to use  [default: 11]
   ~ njobs: (optional) number of jobs to submit at once [default: 10]
   *******************************************************************************************/ 

@@ -7,10 +7,11 @@ include {
     getCramFileSet;
     getAlignmentFileSet;
     getAlignmentGenomicIntervals;
-    haplotypeCaller;
-    haplotypeCallerWithIntervals;
+    germlineCaller;
+    somaticCaller;
+    MtCaller;
     concatGvcfs;
-    haplotypeCallerSpark;
+    germlineCallerSpark;
     //combineGvcfsPerInterval;
     getPedFile;
     deepVariantCaller;
@@ -133,11 +134,18 @@ workflow {
         bamFileSet = getAlignmentFileSet()
 
         //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // ONE-STEP VARIANT CALLING FROM ALIGNMENT FILES: DYSGY & MANTA 
-        // SINGLE SAMPLE STRUCTURAL VARIANT CALLING            
+        // ONE-STEP VARIANT CALLING FROM ALIGNMENT FILES
+        //  - MUTECT2 SOMATIC AND MITOCHONDRIA VARIANT CALLING
+        //  - DYSGY & MANTA SINGLE SAMPLE STRUCTURAL VARIANT CALLING            
         //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-         
-        if(params.single_caller.toUpperCase() == 'DYSGU') {
+
+        if(params.single_caller.toUpperCase() == 'GATK-SOM') {
+            somaticCaller(bamFileSet)
+        }
+        else if(params.single_caller.toUpperCase() == 'GATK-MT') {
+            MtCaller(bamFileSet)
+        }
+        else if(params.single_caller.toUpperCase() == 'DYSGU') {
             dysguCallSvs(bamFileSet)
                 .set { vcf }
             indexVcf(vcf)
@@ -162,9 +170,10 @@ workflow {
         }
         else {
 
-        //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // TWO-STEP SMALL VARIANT CALLING VIA GVCFs: GATK, DEEPVARIANT & GLNEXUS
-        //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // SECOND STEP - JOINT CALLING - IS ONLY EXECUTED IF 'mode' IS SET TO 'varcall'
+        //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
             if(params.single_caller.toUpperCase() == 'DEEPVARIANT') {
                 gvcf = deepVariantCaller(bamFileSet)
@@ -177,7 +186,7 @@ workflow {
                 // have to be split into hundreds - thousands of intervals  //
                 //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=//
  
-                gvcf = haplotypeCaller(bamFileSet)
+                gvcf = germlineCaller(bamFileSet)
             }
 
             if(params.mode == 'varcall') {

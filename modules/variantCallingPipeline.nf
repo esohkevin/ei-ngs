@@ -151,7 +151,7 @@ process getGenomicIntervalList() {
         """
 }
 
-process haplotypeCaller() {
+process germlineCaller() {
     tag "processing ${bamName}"
     label 'gatk'
     label 'variantCaller'
@@ -180,39 +180,65 @@ process haplotypeCaller() {
         """
 }
 
-process haplotypeCallerWithIntervals() {
+process somaticCaller() {
     tag "processing ${bamName}"
     label 'gatk'
     label 'variantCaller'
     cache 'lenient'
     publishDir \
-        path: "${params.output_dir}/gvcfs/intervals/"
+        path: "${params.output_dir}/somatic/", \
+        mode: 'copy'
     input:
         tuple \
             val(bamName), \
             path(bamFile), \
-            path(bamIndex), \
-            path(interval)
+            path(bamIndex)
     output:
         tuple \
             val(bamName), \
-            path("${bamName}_${interval.simpleName}.g.vcf.gz"), \
-            path("${bamName}_${interval.simpleName}.g.vcf.gz.tbi"), \
-            path(interval)
+            path("${bamName}.mutect2.vcf.gz"), \
+            path("${bamName}.mutect2.vcf.gz.tbi")
     script:
         """
         gatk \
             --java-options "-XX:ConcGCThreads=${task.cpus} -Xms${task.memory.toGiga()}g -Xmx${task.memory.toGiga()}g -XX:ParallelGCThreads=${task.cpus}" \
-            HaplotypeCaller \
+            Mutect2 \
             -I ${bamFile} \
             -R ${params.fastaRef} \
-            -L ${interval} \
-            -ERC GVCF \
-            -OBI 'false' \
-            -O ${bamName}_${interval.simpleName}.g.vcf.gz
+            -O ${bamName}.mutect2.vcf.gz
         """
 }
 
+process MtCaller() {
+    tag "processing ${bamName}"
+    label 'gatk'
+    label 'variantCaller'
+    cache 'lenient'
+    publishDir \
+        path: "${params.output_dir}/mt/", \
+        mode: 'copy'
+    input:
+        tuple \
+            val(bamName), \
+            path(bamFile), \
+            path(bamIndex)
+    output:
+        tuple \
+            val(bamName), \
+            path("${bamName}.mutect2.Mt.vcf.gz"), \
+            path("${bamName}.mutect2.Mt.vcf.gz.tbi")
+    script:
+        """
+        gatk \
+            --java-options "-XX:ConcGCThreads=${task.cpus} -Xms${task.memory.toGiga()}g -Xmx${task.memory.toGiga()}g -XX:ParallelGCThreads=${task.cpus}" \
+            Mutect2 \
+            -I ${bamFile} \
+            -R ${params.fastaRef} \
+            -L chrM \
+            --mitochondria-mode true \
+            -O ${bamName}.mutect2.Mt.vcf.gz
+        """
+}
 
 // UNDER DEVELOPMENT
 process concatGvcfs() {
@@ -249,7 +275,7 @@ process concatGvcfs() {
         """
 }
 
-process haplotypeCallerSpark() {
+process germlineCallerSpark() {
     tag "processing ${bamName}"
     beforeScript 'ulimit -c unlimited'
     label 'gatk'
