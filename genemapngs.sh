@@ -37,15 +37,13 @@ function checkprojectparams() {
 	   -e 'workspace' \
          > ${projectdir}/.nextflow.config
 
-      echo -e "\nChecking main project required parameters in '${projectdir}/nextflow.config'\n"
-
       while read line; do
         param=( $(echo $line | grep '=' | sed "s|'||g") )
         paramname=${param[0]}
-        paramval=${param[2]}
+	paramval=$(echo ${param[2]}| tr [:lower:] [:upper:])
         if [[ ${paramval} == NULL ]] || [[ ${paramval} == "" ]]; then
-          echo -e "\n${ANSIRED}ERROR${ANSIRESET}: ${paramname} = '${paramval}' ... FAIL"
-          echo -e "Please set a value for ${paramname}.\n"
+          echo -e "\n${ANSIRED}ERROR${ANSIRESET}: ${paramname} = '${paramval}' ... FAIL!"
+          echo -e "Please set a value for ${paramname} in '${projectdir}/nextflow.config'.\n"
           exit 1
         fi
       done < ${projectdir}/.nextflow.config
@@ -113,6 +111,7 @@ function usage() {
            svarcall: Perform only sinlge sample variant calling to generate gVCF files.
            jvarcall: Perform only joint (multi-sample) variant calling with pre-existing gVCF files.
           varfilter: Filter variant calls in VCF/BCF files.
+	    annovar: Annotate variants with ANNOVAR
 
 
            profiles: <executor>,<container>,<reference>
@@ -344,7 +343,10 @@ function svarcallusage() {
            --alignment_dir      : (required) Path to alignment (BAM/CRAM) files and their indexes (.bai/.crai).
            --out                : Output prefix (optional) [default: my-ngs].
            --output_dir         : (optional) [results will be saved to parent of input directory]
-           --scaller            : Single sample variant caller; gatk, deepvariant, dysgu, manta [default: gatk]
+           --scaller            : Single sample variant caller; gatk-hap, gatk-som, gatk-mt, deepvariant, dysgu, manta [default: gatk-hap]
+                                  gatk-hap: GATK haplotypeCaller
+				  gatk-som: GATK Mutect2 (Somatic caller)
+	                           gatk-mt: GATK Mitochondria caller
            --threads            : number of computer cpus to use  [default: 11].
            --njobs              : (optional) number of jobs to submit at once [default: 10]
            --help               : print this help message.
@@ -401,7 +403,32 @@ function varfilterusage() {
    """
 }
 
+function annovarusage() {
+   echo -e "\nUsage: genemapngs annovar <profile> [options] ..."
+   echo """
+           options:
+           --------
 
+           --wgs                : Specify this flag if your data is whole-genome sequence (it runs whole exome - wes - by default)
+                                  This is important for resource allocation.
+           --left_norm          : (optional) Whether to left-normalize variants before annotation; true, false [defaul: false].
+           --vcf_dir            : (required) Path containing VCF file(s). Each VCF file must contain only one chromosome.
+           --out                : Output prefix (optional) [default: my-varfilter].
+           --output_dir         : (optional) [results will be saved to parent of input directory]
+	   --minimal            : (optional) add this flag to perform only minimal annotation. Only four databases
+                                  are used; refGene, knownGene, cytoBand, avsnp151
+           --interval           : (optional) list containing genomic intervals.
+                                  E.g. one chromosome name per line and/or coordinate in bed format: <chr> <start> <stop>.
+                                  NB: Ensure that your chromosome names are the same as in the reference (e.g. chr1 or 1).
+                                  If not provided, full VCF file provided will be processed in one run. This will take
+                                  longer for large files. It is recommended to provide interval list.
+           --alt_contig         : (optional) add this flag to include alternate contigs in the annotation
+                                  Alternate contigs are removed by default. Only chomosomes 1-22,M,X,Y are processed
+           --threads            : number of computer cpus to use  [default: 4].
+           --njobs              : (optional) number of jobs to submit at once [default: 10]
+           --help               : print this help message.
+   """
+}
 ############################################# CONFIGURATION FILES ####################################################
 function testconfig() {
 #check and remove test config file if it exists
@@ -667,7 +694,11 @@ params {
   ~ alignment_dir: (required) path to alignment (BAM/CRAM) files and their indexes (.bai/.crai).
   ~ output_dir: (optional) defaults to parent of input directory ['input_dir/../']
   ~ output_prefix: (optional) project name.
-  ~ single_caller: (optional) gatk, deepvariant, dysgu, manta [default: gatk]
+  ~ single_caller: (optional) gatk-hap, gatk-som, gatk-mt, deepvariant, dysgu, manta 
+    [default: gatk-hap]
+    gatk-hap: GATK haplotypeCaller
+    gatk-som: GATK Mutect2 (Somatic caller)
+     gatk-mt: GATK Mitochondria caller
   ~ threads: (optional) number of computer cpus to use  [default: 11]
   ~ njobs: (optional) number of jobs to submit at once [default: 10]
   *******************************************************************************************/ 
@@ -786,7 +817,55 @@ $(setglobalparams ${12})
 echo -e "configuration file '${projectname}-varfilter.config' created!\n"
 }
 
+function annovarconfig() {
 
+#check and remove config file if it exists
+[ -e ${projectname}-annovar.config ] && rm ${projectname}-annovar.config
+
+echo """
+params {
+  //============================================================
+  //genemapngs variant annotation (annovar) workflow parameters
+  //============================================================
+
+  exome = $1
+  left_norm = $2
+  vcf_dir = '${3}'
+  output_prefix = '${4}'
+  output_dir = '${5}'
+  minimal = ${6}
+  interval = ${7}
+  alt_contig = ${8}
+  threads = ${9}
+  njobs = ${10}
+
+
+  /*********************************************************************************
+  ~ exome: (optional) for VQSR, MQ annotation will be excluded for exome data
+  ~ left_norm: (optional) Whether to left-normalize variants before annotation with 
+    ANNOVAR; true, false [defaul: false].
+  ~ vcf_dir: (required) path to VCF file(s). Each VCF file must contain only one chromosome
+  ~ output_prefix: (optional) output prefix [default: my-varfilter]. 
+  ~ output_dir: (optional) defaults to parent of vcf directory ['vcf_dir/../']
+  ~ minimal: (optional) whether to perform minimal annotation. Only four databases
+    are used; refGene, knownGene, cytoBand, avsnp151
+  ~ interval: (optional) list containing genomic intervals.
+    E.g. one chromosome name per line and/or coordinate in bed format: <chr> <start> <stop>.
+    NB: Ensure that your chromosome names are the same as in the reference (e.g. chr1 or 1).
+    If not provided, full VCF file provided will be processed in one run. This will take
+    longer for large files. It is recommended to provide interval list.
+  ~ alt_contig: add this flag to include alternate contigs in the annotation
+    Alternate contigs are removed by default. Only chomosomes 1-22,M,X,Y are processed
+  ~ threads: (optional) number of computer cpus to use  [default: 11]
+  ~ njobs: (optional) number of jobs to submit at once [default: 10]
+  **********************************************************************************/
+}
+
+$(setglobalparams ${11})
+""" >> ${projectname}-annovar.config
+
+echo -e "configuration file '${projectname}-annovar.config' created!\n"
+}
 
 if [ $# -lt 1 ]; then
    usage; exit 1;
@@ -1425,6 +1504,76 @@ else
          #echo `nextflow -c ${out}-qc.config run qualitycontrol.nf -profile $profile`
 
       ;;
+      annovar)
+         #pass profile as argument
+         checkprofile $2;
+         profile=$2;
+         shift;
+         if [ $# -lt 2 ]; then
+            annovarusage;
+            exit 1;
+         fi
+
+         prog=`getopt -a --long "help,wgs,left_norm,minimal,alt_contig,interval:,vcf_dir:,out:,output_dir:,threads:,njobs:" -n "${0##*/}" -- "$@"`;
+
+         #- defaults
+         exome=true
+         resource=resource-selector-wes.config
+         left_norm=false
+         vcf_dir=NULL
+         out="my-varfilter"
+         output_dir=NULL
+	 minimal=false
+	 interval=NULL
+	 alt_contig=false
+         threads=4
+         njobs=10
+
+         eval set -- "$prog"
+
+         while true; do
+            case $1 in
+               --wgs) exome=false; resource=resource-selector-wgs.config; shift;;
+               --left_norm) left_norm=true; shift;;
+               --minimal) minimal=true; shift;;
+	       --alt_contig) alt_contig=true; shift;;
+               --vcf_dir) vcf_dir="$2"; shift 2;;
+               --out) out="$2"; shift 2;;
+               --output_dir) output_dir="$2"; shift 2;;
+               --interval) interval="$2"; shift 2;;
+               --threads) threads="$2"; shift 2;;
+               --njobs) njobs="$2"; shift 2;;
+               --help) shift; annovarusage; exit 1;;
+               --) shift; break;;
+               *) shift; annovarusage; exit 1;;
+            esac
+            continue; shift;
+         done
+
+         check_required_params \
+             output_dir,$output_dir \
+             vcf_dir,$vcf_dir && \
+         check_optional_params \
+             out,$out \
+             interval,$interval \
+             threads,$threads \
+             njobs,$njobs && \
+         annovarconfig \
+             $exome \
+             $left_norm \
+             $vcf_dir \
+             $out \
+             $output_dir \
+	     $minimal \
+             $interval \
+	     $alt_contig \
+             $threads \
+             $njobs \
+             $resource
+
+         #echo `nextflow -c ${out}-qc.config run qualitycontrol.nf -profile $profile`
+
+      ;;      
       help) shift; usage; exit 1;;
       *) shift; usage; exit 1;;
    esac

@@ -7,14 +7,16 @@ include {
     getCramFileSet;
     getAlignmentFileSet;
     getAlignmentGenomicIntervals;
-    haplotypeCaller;
-    haplotypeCallerWithIntervals;
+    germlineCaller;
+    somaticCaller;
+    MtCaller;
     concatGvcfs;
-    haplotypeCallerSpark;
+    germlineCallerSpark;
     //combineGvcfsPerInterval;
     getPedFile;
     deepVariantCaller;
     glnexusJointCaller;
+    glnexusJointCallPerInterval;
     dysguCallSvs;
     indexVcf;
     dysguMergeVcfs;
@@ -51,66 +53,109 @@ workflow {
 
     if(params.mode == 'jvarcall') {
 
-        //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // YOU'RE EITHER STARING A NEW IMPORT OR UPDATING EXISTING GENOMICSDBs
-        // OR CALLING VARIANTS FROM EXISTING GENOMICSDBs
-        //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-        if(params.imprt == true) { 
-
-            //-=-=-=-=-=-=
-            // NEW IMPORT
-            //-=-=-=-=-=-=
- 
-           gvcfs = getGvcfFiles().toList()
-           gvcfList = getGvcfList(gvcfs)
-           genomicInterval = getGenomicInterval(gvcfList)
-           genomicsDB = createGenomicsDbPerInterval(genomicInterval, gvcfList)
-
-        }
-        else if(params.update == true) {
-
-            //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-            // UPDATING EXISTING GENOMICSDBs:
-            // genomicsdb workspaces must already exist and gvcfs must be provided with interval list 
-            //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-            gvcfs = getGvcfFiles().toList()        
+        if(params.joint_caller == 'glnexus') {
+            gvcfs = getGvcfFiles().toList()
             gvcfList = getGvcfList(gvcfs)
+
+            //glnexusJointCaller(gvcfList).set { bcf }
+
             genomicInterval = getGenomicInterval(gvcfList)
-            workspace = getGenomicsdbWorkspaces().map { wrkspc -> tuple(wrkspc.simpleName, wrkspc) }
-            genomicInterval
-                .map { interval -> tuple(interval.simpleName + "_${params.output_prefix}-workspace", interval) }
-                .join(workspace)
-                .map {workspaceName, interval, workspace -> tuple(workspaceName, interval, workspace)}
-                .set { workspace_interval }
-            updateGenomicsDbPerInterval(workspace_interval, gvcfList)
+            gvcfList
+                .combine(genomicInterval)
+                .set { glnx_input }
+            glnexusJointCallPerInterval(glnx_input).view().set { bcfs }
+            bcfs_per_chrom_list = collectIntervalsPerChromosome(bcfs).flatten()
+            bcfs_per_chrom = concatPerChromIntervalVcfs(bcfs_per_chrom_list).collect().view()
         }
-        else { 
+        else { // JOINT CALLER DEFAULTS TO GATK
+            //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+            // YOU'RE EITHER STARING A NEW IMPORT OR UPDATING EXISTING GENOMICSDBs
+            // OR CALLING VARIANTS FROM EXISTING GENOMICSDBs
+            //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-            //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-            // DEFAULT TO CALL VARIANTS FROM EXISTING GENOMICSDBs:
-            // genomicsdb workspaces must already exist
-            //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    
-            workspace = getGenomicsdbWorkspaces().map { wrkspc -> tuple(wrkspc.simpleName, wrkspc) }
-            vcfs = callVariantsFromExistingGenomicsDB(workspace).view().collect()
-            vcfs_per_chrom_list = collectIntervalsPerChromosome(vcfs).flatten()
-            vcfs_per_chrom = concatPerChromIntervalVcfs(vcfs_per_chrom_list).collect().view()
-            concatPerChromosomeVcfs(vcfs_per_chrom).view()
+            if(params.imprt == true) { 
 
+                //-=-=-=-=-=-=
+                // NEW IMPORT
+                //-=-=-=-=-=-=
+ 
+               gvcfs = getGvcfFiles().toList()
+               gvcfList = getGvcfList(gvcfs)
+               genomicInterval = getGenomicInterval(gvcfList)
+               genomicsDB = createGenomicsDbPerInterval(genomicInterval, gvcfList)
+               workspace = genomicsDB.map { wrkspc -> tuple(wrkspc.simpleName, wrkspc) }
+               genomicInterval
+                   .map { interval -> tuple(interval.simpleName + "_${params.output_prefix}-workspace", interval) }
+                   .join(workspace)
+                   .map {workspaceName, interval, workspace -> tuple(workspaceName, interval, workspace)}
+                   .set { workspace_interval }
+               vcfs = callVariantsFromGenomicsDB(workspace_interval).collect()
+               vcfs_per_chrom_list = collectIntervalsPerChromosome(vcfs).flatten()
+               vcfs_per_chrom = concatPerChromIntervalVcfs(vcfs_per_chrom_list).collect().view()
+               //concatPerChromosomeVcfs(vcfs_per_chrom).view()
+
+            }
+            else if(params.update == true) {
+
+                //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+                // UPDATING EXISTING GENOMICSDBs:
+                // genomicsdb workspaces must already exist and gvcfs must be provided with interval list 
+                //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+                gvcfs = getGvcfFiles().toList()        
+                gvcfList = getGvcfList(gvcfs)
+                genomicInterval = getGenomicInterval(gvcfList)
+                workspace = getGenomicsdbWorkspaces().map { wrkspc -> tuple(wrkspc.simpleName, wrkspc) }
+                genomicInterval
+                    .map { interval -> tuple(interval.simpleName + "_${params.output_prefix}-workspace", interval) }
+                    .join(workspace)
+                    .map {workspaceName, interval, workspace -> tuple(workspaceName, interval, workspace)}
+                    .set { workspace_interval }
+                updateGenomicsDbPerInterval(workspace_interval, gvcfList)
+            }
+            else { 
+
+                //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+                // DEFAULT TO CALL VARIANTS FROM EXISTING GENOMICSDBs:
+                // genomicsdb workspaces must already exist
+                //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+                if(!params.interval == 'NULL') {
+                    genomicInterval = getGenomicInterval(gvcfList)
+                    workspace = getGenomicsdbWorkspaces().map { wrkspc -> tuple(wrkspc.simpleName, wrkspc) }
+                    genomicInterval
+                        .map { interval -> tuple(interval.simpleName + "_${params.output_prefix}-workspace", interval) }
+                        .join(workspace)
+                        .map {workspaceName, interval, workspace -> tuple(workspaceName, workspace)}
+                        .set { workspace }
+                } else {
+                    workspace = getGenomicsdbWorkspaces().map { wrkspc -> tuple(wrkspc.simpleName, wrkspc) }
+                }
+                vcfs = callVariantsFromExistingGenomicsDB(workspace).view().collect()
+                vcfs_per_chrom_list = collectIntervalsPerChromosome(vcfs).flatten()
+                vcfs_per_chrom = concatPerChromIntervalVcfs(vcfs_per_chrom_list).collect().view()
+                //concatPerChromosomeVcfs(vcfs_per_chrom).view()
+            }
         }
+
     }
     else {
 
         bamFileSet = getAlignmentFileSet()
 
         //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-        // ONE-STEP VARIANT CALLING FROM ALIGNMENT FILES: DYSGY & MANTA 
-        // SINGLE SAMPLE STRUCTURAL VARIANT CALLING            
+        // ONE-STEP VARIANT CALLING FROM ALIGNMENT FILES
+        //  - MUTECT2 SOMATIC AND MITOCHONDRIA VARIANT CALLING
+        //  - DYSGY & MANTA SINGLE SAMPLE STRUCTURAL VARIANT CALLING            
         //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-         
-        if(params.single_caller.toUpperCase() == 'DYSGU') {
+
+        if(params.single_caller.toUpperCase() == 'GATK-SOM') {
+            somaticCaller(bamFileSet)
+        }
+        else if(params.single_caller.toUpperCase() == 'GATK-MT') {
+            MtCaller(bamFileSet)
+        }
+        else if(params.single_caller.toUpperCase() == 'DYSGU') {
             dysguCallSvs(bamFileSet)
                 .set { vcf }
             indexVcf(vcf)
@@ -135,9 +180,10 @@ workflow {
         }
         else {
 
-        //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
         // TWO-STEP SMALL VARIANT CALLING VIA GVCFs: GATK, DEEPVARIANT & GLNEXUS
-        //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+        // SECOND STEP - JOINT CALLING - IS ONLY EXECUTED IF 'mode' IS SET TO 'varcall'
+        //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
             if(params.single_caller.toUpperCase() == 'DEEPVARIANT') {
                 gvcf = deepVariantCaller(bamFileSet)
@@ -150,7 +196,7 @@ workflow {
                 // have to be split into hundreds - thousands of intervals  //
                 //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=//
  
-                gvcf = haplotypeCaller(bamFileSet)
+                gvcf = germlineCaller(bamFileSet)
             }
 
             if(params.mode == 'varcall') {

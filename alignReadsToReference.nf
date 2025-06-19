@@ -64,15 +64,24 @@ workflow {
         //sam = bwaAligner(fastq)
         dupsMarked = alignReadsBWA(fastq)
     }
-    if(!(params.buildVersion == 't2t')) {
-        dupsMarkedIndexed = indexMarkedAlignment(dupsMarked)
-        recalTable = recalibrateBaseQualityScores(dupsMarkedIndexed)
-        dupsMarkedIndexed.combine(recalTable, by: 0).set { applyBQSR_input }
-        recalibrated = applyBaseQualityRecalibrator(applyBQSR_input)
-    }
-    else {
-        dupsMarkedIndexed = indexAndCopyAlignment(dupsMarked)
-    }
+
+    // TEST GATK BUNDLES FOR T2T WITH BQSR //
+
+    dupsMarkedIndexed = indexMarkedAlignment(dupsMarked)
+    recalTable = recalibrateBaseQualityScores(dupsMarkedIndexed)
+    dupsMarkedIndexed.combine(recalTable, by: 0).set { applyBQSR_input }
+    recalibrated = applyBaseQualityRecalibrator(applyBQSR_input)
+
+
+//    if(!(params.buildVersion == 't2t')) {
+//        dupsMarkedIndexed = indexMarkedAlignment(dupsMarked)
+//        recalTable = recalibrateBaseQualityScores(dupsMarkedIndexed)
+//        dupsMarkedIndexed.combine(recalTable, by: 0).set { applyBQSR_input }
+//        recalibrated = applyBaseQualityRecalibrator(applyBQSR_input)
+//    }
+//    else {
+//        dupsMarkedIndexed = indexAndCopyAlignment(dupsMarked)
+//    }
 
 /*
 *    alignment = fixAlignmentMate(sam)

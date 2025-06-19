@@ -22,10 +22,10 @@ def getAlignmentDir() {
                   .map { alignDir -> tuple("${alignDir.baseName}", alignDir) }
 }
 
-def getInputCram() {
-    return channel.fromFilePairs( params.input_dir + "/*.cram", size: 1 )
-                  .ifEmpty { error "\nERROR: Could not locate BAM files!\nPlease make sure you have specified the correct file type and that they exist in the input directory you specified" }
-                  .map { bamName, bamFile -> tuple(bamName, bamFile.first()) }
+def getAlignment() {
+    return channel.fromFilePairs( [params.input_dir + '/*.{bam,bam.bai}', params.input_dir + '/*.{cram,cram.crai}'], size: 2 )
+                  .ifEmpty { error "\nERROR: Could not locate Alignment files!\nPlease make sure you have specified the correct file type and that they exist in the input directory you specified" }
+                  .map { bamName, bamFile -> tuple(bamName, bamFile.first(), bamFile.last()) }
 }
 
 def getInputFastqs() {
@@ -498,6 +498,32 @@ process indexAndCopyAlignment() {
         """
 }
 
+process indexAndMoveAlignment() {
+    tag "processing ${bamName}"
+    label 'samtools'
+    label 'bamIndexer'
+    publishDir \
+        path: "${params.output_dir}/cram/", \
+        mode: 'move'
+    input:
+        tuple \
+            val(bamName), \
+            path(bamFile)
+    output:
+        tuple \
+            val(bamName), \
+            path("${bamFile}"), \
+            path("*.crai")
+    script:
+        bam = bamFile[0]
+        """
+        samtools \
+            index \
+            -@ ${task.cpus} \
+            ${bamFile}
+        """
+}
+
 process markDuplicates() {
     tag "processing ${bamName}"
     label 'samtools'
@@ -766,7 +792,7 @@ process mergeMultiLaneAlignment() {
     tag "processing ${bamName}"
     label 'samtools'
     label 'bamSorter'
-    storeDir "${params.output_dir}/cram/" 
+    //storeDir "${params.output_dir}/cram/" 
     input:
         tuple \
             val(bamName), \
@@ -774,7 +800,9 @@ process mergeMultiLaneAlignment() {
     output:
         tuple \
             val(bamName), \
-            path("${bamName}.merged.cram*")
+            path("${bamName}.merged.cram"), \
+            path("${bamName}.merged.cram.crai"), \
+            path("${bamName}.merged.hdr.sam")
     script:
         """
         for file in \$(ls -R ${bamDir}/*.{bam,cram} 2>/dev/null); do
@@ -791,5 +819,41 @@ process mergeMultiLaneAlignment() {
             --write-index \
             ${bamName}.merged.cram \
             -b alignment-list.txt
+
+        samtools \
+            view -H \
+            ${bamName}.merged.cram | \
+        sed '0,/@RG/{/@RG/d}' \
+            > ${bamName}.merged.hdr.sam
         """
 }
+
+process updateMergedAlignmentHeader() {
+    tag "processing ${bamName}"
+    label 'samtools'
+    label 'bamSorter'
+    storeDir "${params.output_dir}/merge/"
+    input:
+        tuple \
+            val(bamName), \
+            path(bamFile), \
+            path(bamIndex), \
+            path(bamHeader)
+    output:
+        tuple \
+            val(bamName), \
+            path("${bamName}.merged.updated.cram*")
+    script:
+        """
+        samtools \
+            addreplacerg \
+            -r \"@RG\\tID:${bamName}\\tSM:${bamName}\\tPL:ILLUMINA\" \
+            -O CRAM \
+            --write-index \
+            --reference ${params.fastaRef} \
+            -@ ${task.cpus} \
+            -o ${bamName}.merged.updated.cram \
+            ${bamFile}
+        """
+}
+

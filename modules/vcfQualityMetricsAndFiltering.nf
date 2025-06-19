@@ -370,7 +370,9 @@ process leftnormalizeSnvs() {
             path(input_vcf), \
             path(vcf_index)
     output:
-        path "${input_vcf.simpleName}-filtered-leftnorm.vcf.{gz,gz.tbi}"
+        tuple \
+            path("${input_vcf.simpleName}-filtered-leftnorm.vcf.gz"), \
+            path("${input_vcf.simpleName}-filtered-leftnorm.vcf.gz.tbi")
     script:
         """
         bcftools \
@@ -381,7 +383,7 @@ process leftnormalizeSnvs() {
             ${input_vcf} | \
         bcftools \
             view \
-            -c ${params.minAC} \
+            -c \$([[ ${params.minAC} == null ]] && echo 1 || echo ${params.minAC}) \
             --threads ${task.cpus} \
             -Oz | \
             tee "${input_vcf.simpleName}-filtered-leftnorm.vcf.gz" | \

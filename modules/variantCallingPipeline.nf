@@ -116,10 +116,10 @@ process getVcfGenomicIntervals() {
         path "*"
     script:
         """
-        #gvcf=\$(ls *.g.vcf.gz | head -1)
-        gvcf=\$(awk '{print \$2}' | head -1)
+        gvcfile=\$(readlink ${gvcfList})
+        gvcf=\$(awk '{print \$2}' \${gvcfile} | head -1)
 
-        zgrep '##contig' \$(readlink \${gvcf}) | \
+        zgrep '##contig' \${gvcf} | \
             sed 's/[=,>]/\t/g' | \
             cut -f3,5 | \
             grep -v '^HLA' | \
@@ -148,11 +148,10 @@ process getGenomicIntervalList() {
                 echo \${interval} > \$(echo \${interval} | sed 's/[:*]/_/g' | sed 's/ /_/g').bed
             fi
         done < ${params.interval}
-
         """
 }
 
-process haplotypeCaller() {
+process germlineCaller() {
     tag "processing ${bamName}"
     label 'gatk'
     label 'variantCaller'
@@ -181,39 +180,65 @@ process haplotypeCaller() {
         """
 }
 
-process haplotypeCallerWithIntervals() {
+process somaticCaller() {
     tag "processing ${bamName}"
     label 'gatk'
     label 'variantCaller'
     cache 'lenient'
     publishDir \
-        path: "${params.output_dir}/gvcfs/intervals/"
+        path: "${params.output_dir}/somatic/", \
+        mode: 'copy'
     input:
         tuple \
             val(bamName), \
             path(bamFile), \
-            path(bamIndex), \
-            path(interval)
+            path(bamIndex)
     output:
         tuple \
             val(bamName), \
-            path("${bamName}_${interval.simpleName}.g.vcf.gz"), \
-            path("${bamName}_${interval.simpleName}.g.vcf.gz.tbi"), \
-            path(interval)
+            path("${bamName}.mutect2.vcf.gz"), \
+            path("${bamName}.mutect2.vcf.gz.tbi")
     script:
         """
         gatk \
             --java-options "-XX:ConcGCThreads=${task.cpus} -Xms${task.memory.toGiga()}g -Xmx${task.memory.toGiga()}g -XX:ParallelGCThreads=${task.cpus}" \
-            HaplotypeCaller \
+            Mutect2 \
             -I ${bamFile} \
             -R ${params.fastaRef} \
-            -L ${interval} \
-            -ERC GVCF \
-            -OBI 'false' \
-            -O ${bamName}_${interval.simpleName}.g.vcf.gz
+            -O ${bamName}.mutect2.vcf.gz
         """
 }
 
+process MtCaller() {
+    tag "processing ${bamName}"
+    label 'gatk'
+    label 'variantCaller'
+    cache 'lenient'
+    publishDir \
+        path: "${params.output_dir}/mt/", \
+        mode: 'copy'
+    input:
+        tuple \
+            val(bamName), \
+            path(bamFile), \
+            path(bamIndex)
+    output:
+        tuple \
+            val(bamName), \
+            path("${bamName}.mutect2.Mt.vcf.gz"), \
+            path("${bamName}.mutect2.Mt.vcf.gz.tbi")
+    script:
+        """
+        gatk \
+            --java-options "-XX:ConcGCThreads=${task.cpus} -Xms${task.memory.toGiga()}g -Xmx${task.memory.toGiga()}g -XX:ParallelGCThreads=${task.cpus}" \
+            Mutect2 \
+            -I ${bamFile} \
+            -R ${params.fastaRef} \
+            -L chrM \
+            --mitochondria-mode true \
+            -O ${bamName}.mutect2.Mt.vcf.gz
+        """
+}
 
 // UNDER DEVELOPMENT
 process concatGvcfs() {
@@ -250,7 +275,7 @@ process concatGvcfs() {
         """
 }
 
-process haplotypeCallerSpark() {
+process germlineCallerSpark() {
     tag "processing ${bamName}"
     beforeScript 'ulimit -c unlimited'
     label 'gatk'
@@ -399,18 +424,21 @@ process createGenomicsDbPerInterval() {
         #        echo "-V \${file}";
         #    fi
         #done > gvcf.list
-
+        mkdir -p temp
         gatk \
-            --java-options "-XX:ConcGCThreads=${task.cpus} -Xms${task.memory.toGiga()}g -Xmx${task.memory.toGiga()}g -XX:ParallelGCThreads=${task.cpus}" \
+            --java-options "-Xms${task.memory.toGiga()}g -Xmx${task.memory.toGiga()}g -XX:ConcGCThreads=${task.cpus} -XX:ParallelGCThreads=${task.cpus}" \
             GenomicsDBImport \
             -R ${params.fastaRef} \
-            --tmp-dir . \
+            --tmp-dir temp \
+            --batch-size ${params.batch_size} \
             --consolidate true \
             --arguments_file ${gvcfList} \
             -L ${interval} \
             --genomicsdb-workspace-path ${interval.simpleName}_${params.output_prefix}-workspace
         """
 }
+
+//-XX:ConcGCThreads=${task.cpus} -XX:ParallelGCThreads=${task.cpus}
 
 process updateGenomicsDbPerInterval() {
     tag "processing ${interval.simpleName}..."
@@ -428,11 +456,12 @@ process updateGenomicsDbPerInterval() {
             path("${interval.simpleName}_${params.output_prefix}-workspace")
     script:
         """
+        mkdir -p temp
         gatk \
             --java-options "-XX:ConcGCThreads=${task.cpus} -Xms${task.memory.toGiga()}g -Xmx${task.memory.toGiga()}g -XX:ParallelGCThreads=${task.cpus}" \
             GenomicsDBImport \
             -R ${params.fastaRef} \
-            --tmp-dir . \
+            --tmp-dir temp \
             --consolidate true \
             --arguments_file ${gvcfList} \
             --batch-size ${params.batch_size} \
@@ -470,7 +499,7 @@ process getPedFile() {
 process genotypeGvcfs() {
     tag "Writing genotypes to ${params.output_prefix}.vcf.gz"
     label 'gatk'
-    label 'variantCaller'
+    label 'gatkVariantCaller'
     publishDir \
         path: "${params.output_dir}/vcf/"
     input:
@@ -496,7 +525,7 @@ process genotypeGvcfs() {
 process callVariantsFromGenomicsDB() {
     tag "Writing genotypes to ${interval.simpleName}_${params.output_prefix}.vcf.gz"
     label 'gatk'
-    label 'variantCaller'
+    label 'gatkVariantCaller'
     //publishDir \
     //    path: "${params.output_dir}/vcf/"
     input:
@@ -522,7 +551,7 @@ process callVariantsFromGenomicsDB() {
 process callVariantsFromExistingGenomicsDB() {
     tag "Writing genotypes to ${workspaceName}.vcf.gz"
     label 'gatk'
-    label 'variantCaller'
+    label 'gatkVariantCaller'
     //publishDir \
     //    path: "${params.output_dir}/vcf/"
     input:
@@ -547,23 +576,26 @@ process collectIntervalsPerChromosome() {
     tag "Collecting intervals per chromosome..."
     label 'bcftools'
     label 'variantCaller'
-    storeDir "${params.output_dir}/vcf/"
+    publishDir \
+        path: "${params.output_dir}/vcf/", \
+        mode: 'copy'
+    //storeDir "${params.output_dir}/vcf/"
     input:
         path(vcfs)
     output:
         path("*_vcfs_list.txt")
     script:
         """
-        ls *.vcf.gz | awk '{print \$1,\$1}' > vcfs_list.txt
+        ls *.{vcf.gz,bcf} | awk '{print \$1,\$1}' > vcfs_list.txt
 
         while read line; do 
-            data=( \$line ); 
-            echo \$(basename \${data[0]} | sed 's/_/ /1' | awk '{print \$1}') \$(readlink \${data[1]})
-        done < vcfs_list.txt > vcf_chr_list.txt
+            data=( \$line );
+            echo \$(basename \${data[0]} | sed 's/_/ /g' | awk '{print \$1,\$2}') \$(readlink \${data[1]})
+        done < vcfs_list.txt | sort -g -k1 -k2 > vcf_chr_list.txt
 
 
         for chrom in \$(awk '{print \$1}' vcf_chr_list.txt | sort -V | uniq); do
-            grep -w \${chrom} vcf_chr_list.txt > \${chrom}_vcfs_list.txt
+            awk -v chr="\${chrom}" '\$1 == chr' vcf_chr_list.txt > \${chrom}_vcfs_list.txt
         done
         """
 }
@@ -572,9 +604,10 @@ process concatPerChromIntervalVcfs() {
     tag "Concatenating VCF files per chromosome..."
     label 'bcftools'
     label 'variantCaller'
-    storeDir "${params.output_dir}/vcf/"
-    //publishDir \
-    //    path: "${params.output_dir}/vcf/"
+    //storeDir "${params.output_dir}/vcf/"
+    publishDir \
+        path: "${params.output_dir}/vcf/", \
+        mode: 'copy'
     input:
         path(vcf_list)
     output:
@@ -582,9 +615,15 @@ process concatPerChromIntervalVcfs() {
     script:
         """
         chrom=\$(awk '{print \$1}' ${vcf_list} | uniq)
-        awk '{print \$2}' ${vcf_list} > \${chrom}_concat.list
+        awk '{print \$3}' ${vcf_list} > \${chrom}_concat.list
 
-        #readlink *.gz > concat.list
+        for vcf in \$(cat \${chrom}_concat.list); do
+            [[ ! -e "\${vcf}.csi"  ]] && \
+            bcftools \
+                index \
+                --threads ${task.cpus} \
+                \${vcf}
+        done
 
         bcftools \
             concat \
@@ -632,10 +671,9 @@ process concatPerChromosomeVcfs() {
 }
 
 process deepVariantCaller() {
-    tag "Writing genotypes to ${params.output_prefix}.vcf.gz"
+    tag "Writing genotypes to ${bamName}.g.vcf.gz"
     label 'deepvariant'
     label 'deepv_caller'
-    beforeScript = 'module load python/anaconda-python-3.7'
     publishDir \
         path: "${params.output_dir}/gvcfs/"
     input:
@@ -646,9 +684,21 @@ process deepVariantCaller() {
     output:
         path "${bamName}.g.vcf.{gz,gz.tbi}"
     script:
+    if(params.exome == true)
         """
         run_deepvariant \
-            --model_type=\$([ ${params.exome} == true ] && echo WES || echo WGS) \
+            --model_type=WES \
+            --ref=${params.fastaRef} \
+            --reads=${bamFile} \
+            --output_gvcf=${bamName}.g.vcf.gz \
+            --output_vcf=${bamName}.vcf.gz \
+            --num_shards=${task.cpus}
+        """
+    else
+        """
+        mkdir -p ./tmp
+        run_deepvariant \
+            --model_type=WGS \
             --ref=${params.fastaRef} \
             --reads=${bamFile} \
             --output_gvcf=${bamName}.g.vcf.gz \
@@ -669,19 +719,48 @@ process glnexusJointCaller() {
         path "${params.output_prefix}_glnexus.bcf"
     script:
         """
-        for file in ${gvcfList}; do
-            if [ \${file##*.} != "tbi" ]; then
-                echo "\${file}";
-            fi
-        done | sort -V > gvcf.list
+        # for file in ${gvcfList}; do
+        #     if [ \${file##*.} != "tbi" ]; then
+        #         echo "\${file}";
+        #     fi
+        # done | sort -V > gvcf.list
+
+        awk '{print \$2}' ${gvcfList} > gvcflist.txt
 
         if [ -d "GLnexus.DB" ]; then rm -rf GLnexus.DB; fi
 
         glnexus_cli \
-            --config DeepVariant \
-            --list gvcf.list \
+            --config ${params.glnexus_config} \
+            --list gvcflist.txt \
             --threads ${task.cpus} \
             > "${params.output_prefix}_glnexus.bcf"
+        """
+}
+
+process glnexusJointCallPerInterval() {
+    tag "Writing genotypes to ${interval.baseName}_glnexus.bcf"
+    label 'glnexus'
+    label 'nexus_caller'
+    //publishDir \
+    //    path: "${params.output_dir}/vcf/bcf/"
+    input:
+        tuple \
+            path(gvcfList), \
+            path(interval)
+    output:
+        path "${interval.baseName}_glnexus.bcf"
+    script:
+        """
+        awk '{print \$2}' ${gvcfList} > gvcflist.txt
+
+        if [ -d "GLnexus.DB" ]; then rm -rf GLnexus.DB; fi
+
+        glnexus_cli \
+            --config ${params.glnexus_config} \
+            --list gvcflist.txt \
+            --bed ${interval} \
+            --threads ${task.cpus} \
+            > "${interval.baseName}_glnexus.bcf"
         """
 }
 
