@@ -42,11 +42,11 @@ workflow {
         vcf = leftnorm.map { vcf, index -> vcf }
     }
 
-    getChromFromVcf(vcf)
-        .map { chrom, vcf -> tuple("${chrom.simpleName}", vcf) }
-        .set { chrom_vcf }
-
     if(!(params.interval == "NULL")) {
+        getChromFromVcf(vcf)
+            .map { chrom, vcf -> tuple("${chrom.simpleName}", vcf) }
+            .set { chrom_vcf }
+
         indexVcf(chrom_vcf)
            .set { chrom_vcf_index }
 

@@ -83,6 +83,16 @@ workflow {
                gvcfList = getGvcfList(gvcfs)
                genomicInterval = getGenomicInterval(gvcfList)
                genomicsDB = createGenomicsDbPerInterval(genomicInterval, gvcfList)
+               workspace = genomicsDB.map { wrkspc -> tuple(wrkspc.simpleName, wrkspc) }
+               genomicInterval
+                   .map { interval -> tuple(interval.simpleName + "_${params.output_prefix}-workspace", interval) }
+                   .join(workspace)
+                   .map {workspaceName, interval, workspace -> tuple(workspaceName, interval, workspace)}
+                   .set { workspace_interval }
+               vcfs = callVariantsFromGenomicsDB(workspace_interval).collect()
+               vcfs_per_chrom_list = collectIntervalsPerChromosome(vcfs).flatten()
+               vcfs_per_chrom = concatPerChromIntervalVcfs(vcfs_per_chrom_list).collect().view()
+               //concatPerChromosomeVcfs(vcfs_per_chrom).view()
 
             }
             else if(params.update == true) {

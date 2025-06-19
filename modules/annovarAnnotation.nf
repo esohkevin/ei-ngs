@@ -116,7 +116,7 @@ process annovarGRCh37() {
     label 'annovarMem'
     if(params.interval == 'NULL') {
         publishDir \
-            path: "${params.output_dir}/annovar/",
+            path: "${params.output_dir}/annovar/", \
             mode: 'copy'
     } else {
         publishDir \
@@ -134,7 +134,7 @@ process annovarGRCh37() {
             -buildver hg19 \
             -out "${vcfFile.simpleName}" \
             -remove \
-            -protocol refGene,knownGene,gwasCatalog,genomicSuperDups,cytoBand,exac03,avsnp150,abraom,dbnsfp33a,regsnpintron,esp6500siv2_all,SAS.sites.2015_08,EUR.sites.2015_08,EAS.sites.2015_08,AMR.sites.2015_08,ALL.sites.2015_08,AFR.sites.2015_08,nci60,clinvar_20210501,refGeneWithVer,revel,mitimpact24,intervar_20180118,hrcr1,gme,gnomad211_exome,gene4denovo201907,dbscsnv11,dbnsfp31a_interpro,cosmic70 \
+            -protocol refGene,knownGene,gwasCatalog,genomicSuperDups,cytoBand,exac03,avsnp151,abraom,dbnsfp33a,regsnpintron,esp6500siv2_all,SAS.sites.2015_08,EUR.sites.2015_08,EAS.sites.2015_08,AMR.sites.2015_08,ALL.sites.2015_08,AFR.sites.2015_08,nci60,clinvar_20210501,refGeneWithVer,revel,mitimpact24,intervar_20180118,hrcr1,gme,gnomad211_exome,gene4denovo201907,dbscsnv11,dbnsfp31a_interpro,cosmic70 \
             -operation g,g,r,r,r,f,f,f,f,f,f,f,f,f,f,f,f,f,f,f,f,f,f,f,f,f,f,f,f,f \
             -nastring '.' \
             -vcfinput \
@@ -151,13 +151,13 @@ process minimalAnnovarGRCh37() {
     tag "processing ${vcfFile}"
     label 'annovar'
     label 'annovarMinimal'
-    publishDir {
-        if(params.interval == 'NULL') {
-            path: "${params.output_dir}/"
+    if(params.interval == 'NULL') {
+        publishDir \
+            path: "${params.output_dir}/", \
             mode: 'copy'
-        } else {
+    } else {
+        publishDir \
             path: "${workDir}/tmp/"
-        }
     }
     input:
         path(vcfFile)
@@ -171,8 +171,8 @@ process minimalAnnovarGRCh37() {
             -buildver hg19 \
             -out "${vcfFile.simpleName}" \
             -remove \
-            -protocol refGene,knownGene,cytoBand,avsnp150 \
-            -operation g,g,r,f \
+            -protocol refGene,knownGene,cytoBand,gwasCatalog,avsnp151 \
+            -operation g,g,r,r,f \
             -nastring '.' \
             -vcfinput \
             -polish \
@@ -218,13 +218,13 @@ process minimalAnnovarGRCh38() {
     tag "processing ${vcfFile}"
     label 'annovar'
     label 'annovarMinimal'
-    publishDir {
-        if(params.interval == 'NULL') {
-            path: "${params.output_dir}/"
+    if(params.interval == 'NULL') {
+        publishDir \
+            path: "${params.output_dir}/", \
             mode: 'copy'
-        } else {
+    } else {
+        publishDir \
             path: "${workDir}/tmp/"
-        }
     }
     input:
         path(vcfFile)
@@ -238,8 +238,8 @@ process minimalAnnovarGRCh38() {
             -buildver hg38 \
             -out "${vcfFile.simpleName}" \
             -remove \
-            -protocol refGene,knownGene,cytoBand,avsnp151 \
-            -operation g,g,r,f \
+            -protocol refGene,knownGene,gwasCatalog,cytoBand,avsnp151 \
+            -operation g,g,r,r,f \
             -nastring '.' \
             -vcfinput \
             -polish \
