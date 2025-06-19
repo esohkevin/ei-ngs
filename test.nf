@@ -21,7 +21,7 @@ workflow {
   println "njobs=${params.njobs}"
   println ""
 
-  plink()
+  run_plink()
 	
 }
 
@@ -36,7 +36,7 @@ workflow.onError{
   println "workflow execution stopped with the following message: ${workflow.errorMessage}"
 }
 
-process plink() {
+process run_plink() {
 
   // directives
   tag "processing ..."
